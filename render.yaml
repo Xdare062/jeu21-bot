@@ -6,6 +6,8 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: python main.py
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
       - key: BOT_TOKEN
         value: 8932137146:AAErqWryYEPzU7Nz3_Llxu3yv__x3vumvlI
       - key: CANAL_ID
