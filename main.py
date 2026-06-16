@@ -1,16 +1,9 @@
 import re
 import os
 import threading
-import logging
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s"
-)
-log = logging.getLogger("jeu21")
 
 TOKEN = os.environ.get("BOT_TOKEN", "8932137146:AAErqWryYEPzU7Nz3_Llxu3yv__x3vumvlI")
 CANAL_ID = int(os.environ.get("CANAL_ID", "-1003839030429"))
@@ -67,24 +60,40 @@ def parse_message(texte):
         'tour': m.group(6)
     }
 
+def est_paire_as(cartes):
+    """Vrai si la main est composée exactement de deux As (A+A = 21)."""
+    return len(cartes) == 2 and all(c == 11 for c in cartes)
+
+
 def analyser(data):
     N = data['N']
     J1 = data['J1']
     J2 = data['J2']
     tour = data['tour']
+    cartes_j1 = parse_cartes(data['cartes_j1'])
     cartes_j2 = parse_cartes(data['cartes_j2'])
 
     lignes = []
-    lignes.append(f"📊 Analyse #N{N} — T{tour}")
+    lignes.append(f"📊 *Analyse #N{N} — T{tour}*")
     lignes.append(f"J1 = {J1} | J2 = {J2}")
     lignes.append("─────────────────")
+
+    # RÈGLE A — Anomalie paire d'As (J1 ou J2)
+    if est_paire_as(cartes_j1) or est_paire_as(cartes_j2):
+        lignes.append("🚫 *Anomalie — paire d'As détectée*")
+        if est_paire_as(cartes_j1):
+            lignes.append(f"  J1 = A+A = 21 ({data['cartes_j1']})")
+        if est_paire_as(cartes_j2):
+            lignes.append(f"  J2 = A+A = 21 ({data['cartes_j2']})")
+        lignes.append("Partie ignorée — pas d'analyse.")
+        return "\n".join(lignes)
 
     # ÉTAPE 1 — Éligibilité
     elig_j1 = J1 < 20
     elig_j2 = 21 < J2 < 30
 
     if not elig_j1 or not elig_j2:
-        lignes.append("❌ Non éligible")
+        lignes.append("❌ *Non éligible*")
         if not elig_j1:
             lignes.append(f"  J1 < 20 : ✗ (J1 = {J1})")
         if not elig_j2:
@@ -95,7 +104,7 @@ def analyser(data):
 
     # ÉTAPE 2 — &
     amper = 20 - J1
-    lignes.append(f"& = 20 − {J1} = {amper}")
+    lignes.append(f"& = 20 − {J1} = *{amper}*")
 
     # ÉTAPE 3+4 — Diff
     if not cartes_j2:
@@ -106,45 +115,56 @@ def analyser(data):
     sum_autres = sum(cartes_j2) - max_carte
     diff = sum_autres - max_carte
     lignes.append(f"Cartes J2 : {cartes_j2} → max = {max_carte}")
-    lignes.append(f"Diff = {sum_autres} − {max_carte} = {diff}")
+    lignes.append(f"Diff = {sum_autres} − {max_carte} = *{diff}*")
 
     # ÉTAPE 5 — Écart
     ecart = J2 - J1
-    lignes.append(f"Écart = {J2} − {J1} = {ecart}")
+    lignes.append(f"Écart = {J2} − {J1} = *{ecart}*")
 
     # ÉTAPE 6 — Vérif Diff ≤ Écart
     check_diff = diff <= ecart
     lignes.append(f"Diff ≤ Écart : {diff} ≤ {ecart} {'✅' if check_diff else '❌'}")
 
     if not check_diff:
-        lignes.append("❌ Condition non remplie — arrêt")
+        lignes.append("❌ *Condition non remplie — arrêt*")
         return "\n".join(lignes)
 
     # ÉTAPE 7 — @
     at = diff + amper
-    lignes.append(f"@ = {diff} + {amper} = {at}")
+    lignes.append(f"@ = {diff} + {amper} = *{at}*")
+
+    # RÈGLE B — Abandon si (Écart + &) + une carte de J2 = J1
+    somme_b = ecart + amper
+    cartes_en_cause = [c for c in cartes_j2 if somme_b + c == J1]
+    if cartes_en_cause:
+        lignes.append(
+            f"(Écart + &) = {ecart} + {amper} = {somme_b} ; "
+            f"+ carte({cartes_en_cause[0]}) = {somme_b + cartes_en_cause[0]} = J1"
+        )
+        lignes.append("🚫 *Condition d'abandon remplie — partie abandonnée*")
+        return "\n".join(lignes)
 
     # ÉTAPE 8 — Vérif @ ≤ Écart
     check_at = at <= ecart
     lignes.append(f"@ ≤ Écart : {at} ≤ {ecart} {'✅' if check_at else '❌'}")
 
     if not check_at:
-        lignes.append("❌ Condition non remplie — arrêt")
+        lignes.append("❌ *Condition non remplie — arrêt*")
         return "\n".join(lignes)
 
     # ÉTAPE 9 — Partie future
     n_future = N + at
-    lignes.append(f"N_future = {N} + {at} = N{n_future}")
+    lignes.append(f"N_future = {N} + {at} = *N{n_future}*")
 
     # SIGNAL
     lignes.append("─────────────────")
-    lignes.append(f"📡 Signal : J1 + 19,5")
-    lignes.append(f"🎯 À la partie N{n_future}")
+    lignes.append(f"📡 *Signal : J1 + 19,5*")
+    lignes.append(f"🎯 *À la partie N{n_future}*")
 
     # CAS PARTICULIER
     if at == ecart:
         lignes.append("─────────────────")
-        lignes.append(f"⚠️ Cas particulier — @ = Écart ({at} = {ecart})")
+        lignes.append(f"⚠️ *Cas particulier — @ = Écart ({at} = {ecart})*")
         lignes.append(f"À N{n_future} : J1 ou Croupier dépassera 21")
 
     return "\n".join(lignes)
@@ -153,43 +173,27 @@ def analyser(data):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message or update.channel_post
     if not msg:
-        log.info("Update reçu sans message/channel_post: %r", update)
         return
 
     texte = msg.text or msg.caption or ""
     if not texte:
-        log.info("Message sans texte/caption ignoré (chat_id=%s)", msg.chat_id)
         return
-
-    log.info("Message brut reçu (chat_id=%s): %r", msg.chat_id, texte)
 
     # Vérifier que c'est bien un message de partie
     if not re.search(r'#N\d+', texte):
-        log.info("Pas de motif #N trouvé, message ignoré: %r", texte)
         return
 
     data = parse_message(texte)
     if not data:
-        log.warning("ÉCHEC DU PARSING — le regex principal n'a pas matché: %r", texte)
         return
 
-    log.info("Parsing réussi: %s", data)
+    resultat = analyser(data)
 
-    try:
-        resultat = analyser(data)
-        log.info("Résultat analyse:\n%s", resultat)
-    except Exception:
-        log.exception("Exception levée dans analyser() pour data=%s", data)
-        return
-
-    try:
-        await context.bot.send_message(
-            chat_id=CANAL_ID,
-            text=resultat
-        )
-        log.info("Message envoyé avec succès pour #N%s", data['N'])
-    except Exception:
-        log.exception("Exception levée lors de l'envoi Telegram pour #N%s", data['N'])
+    await context.bot.send_message(
+        chat_id=CANAL_ID,
+        text=resultat,
+        parse_mode="Markdown"
+    )
 
 
 def main():
