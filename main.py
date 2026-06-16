@@ -1,9 +1,16 @@
 import re
 import os
 import threading
+import logging
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
+log = logging.getLogger("jeu21")
 
 TOKEN = os.environ.get("BOT_TOKEN", "8932137146:AAErqWryYEPzU7Nz3_Llxu3yv__x3vumvlI")
 CANAL_ID = int(os.environ.get("CANAL_ID", "-1003839030429"))
@@ -146,27 +153,44 @@ def analyser(data):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message or update.channel_post
     if not msg:
+        log.info("Update reçu sans message/channel_post: %r", update)
         return
 
     texte = msg.text or msg.caption or ""
     if not texte:
+        log.info("Message sans texte/caption ignoré (chat_id=%s)", msg.chat_id)
         return
+
+    log.info("Message brut reçu (chat_id=%s): %r", msg.chat_id, texte)
 
     # Vérifier que c'est bien un message de partie
     if not re.search(r'#N\d+', texte):
+        log.info("Pas de motif #N trouvé, message ignoré: %r", texte)
         return
 
     data = parse_message(texte)
     if not data:
+        log.warning("ÉCHEC DU PARSING — le regex principal n'a pas matché: %r", texte)
         return
 
-    resultat = analyser(data)
+    log.info("Parsing réussi: %s", data)
 
-    await context.bot.send_message(
-        chat_id=CANAL_ID,
-        text=resultat,
-        parse_mode="Markdown"
-    )
+    try:
+        resultat = analyser(data)
+        log.info("Résultat analyse:\n%s", resultat)
+    except Exception:
+        log.exception("Exception levée dans analyser() pour data=%s", data)
+        return
+
+    try:
+        await context.bot.send_message(
+            chat_id=CANAL_ID,
+            text=resultat,
+            parse_mode="Markdown"
+        )
+        log.info("Message envoyé avec succès pour #N%s", data['N'])
+    except Exception:
+        log.exception("Exception levée lors de l'envoi Telegram pour #N%s", data['N'])
 
 
 def main():
