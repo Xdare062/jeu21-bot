@@ -75,7 +75,7 @@ def analyser(data):
     cartes_j2 = parse_cartes(data['cartes_j2'])
 
     lignes = []
-    lignes.append(f"📊 *Analyse #N{N} — T{tour}*")
+    lignes.append(f"📊 Analyse #N{N} — T{tour}")
     lignes.append(f"J1 = {J1} | J2 = {J2}")
     lignes.append("─────────────────")
 
@@ -84,7 +84,7 @@ def analyser(data):
     elig_j2 = 21 < J2 < 30
 
     if not elig_j1 or not elig_j2:
-        lignes.append("❌ *Non éligible*")
+        lignes.append("❌ Non éligible")
         if not elig_j1:
             lignes.append(f"  J1 < 20 : ✗ (J1 = {J1})")
         if not elig_j2:
@@ -95,7 +95,7 @@ def analyser(data):
 
     # ÉTAPE 2 — &
     amper = 20 - J1
-    lignes.append(f"& = 20 − {J1} = *{amper}*")
+    lignes.append(f"& = 20 − {J1} = {amper}")
 
     # ÉTAPE 3+4 — Diff
     if not cartes_j2:
@@ -106,45 +106,45 @@ def analyser(data):
     sum_autres = sum(cartes_j2) - max_carte
     diff = sum_autres - max_carte
     lignes.append(f"Cartes J2 : {cartes_j2} → max = {max_carte}")
-    lignes.append(f"Diff = {sum_autres} − {max_carte} = *{diff}*")
+    lignes.append(f"Diff = {sum_autres} − {max_carte} = {diff}")
 
     # ÉTAPE 5 — Écart
     ecart = J2 - J1
-    lignes.append(f"Écart = {J2} − {J1} = *{ecart}*")
+    lignes.append(f"Écart = {J2} − {J1} = {ecart}")
 
     # ÉTAPE 6 — Vérif Diff ≤ Écart
     check_diff = diff <= ecart
     lignes.append(f"Diff ≤ Écart : {diff} ≤ {ecart} {'✅' if check_diff else '❌'}")
 
     if not check_diff:
-        lignes.append("❌ *Condition non remplie — arrêt*")
+        lignes.append("❌ Condition non remplie — arrêt")
         return "\n".join(lignes)
 
     # ÉTAPE 7 — @
     at = diff + amper
-    lignes.append(f"@ = {diff} + {amper} = *{at}*")
+    lignes.append(f"@ = {diff} + {amper} = {at}")
 
     # ÉTAPE 8 — Vérif @ ≤ Écart
     check_at = at <= ecart
     lignes.append(f"@ ≤ Écart : {at} ≤ {ecart} {'✅' if check_at else '❌'}")
 
     if not check_at:
-        lignes.append("❌ *Condition non remplie — arrêt*")
+        lignes.append("❌ Condition non remplie — arrêt")
         return "\n".join(lignes)
 
     # ÉTAPE 9 — Partie future
     n_future = N + at
-    lignes.append(f"N_future = {N} + {at} = *N{n_future}*")
+    lignes.append(f"N_future = {N} + {at} = N{n_future}")
 
     # SIGNAL
     lignes.append("─────────────────")
-    lignes.append(f"📡 *Signal : J1 + 19,5*")
-    lignes.append(f"🎯 *À la partie N{n_future}*")
+    lignes.append(f"📡 Signal : J1 + 19,5")
+    lignes.append(f"🎯 À la partie N{n_future}")
 
     # CAS PARTICULIER
     if at == ecart:
         lignes.append("─────────────────")
-        lignes.append(f"⚠️ *Cas particulier — @ = Écart ({at} = {ecart})*")
+        lignes.append(f"⚠️ Cas particulier — @ = Écart ({at} = {ecart})")
         lignes.append(f"À N{n_future} : J1 ou Croupier dépassera 21")
 
     return "\n".join(lignes)
@@ -185,8 +185,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await context.bot.send_message(
             chat_id=CANAL_ID,
-            text=resultat,
-            parse_mode="Markdown"
+            text=resultat
         )
         log.info("Message envoyé avec succès pour #N%s", data['N'])
     except Exception:
