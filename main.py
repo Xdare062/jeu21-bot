@@ -25,7 +25,7 @@ def start_web_server():
     server.serve_forever()
 
 VALEURS_CARTES = {
-    'A': 11, 'J': 10, 'Q': 10, 'K': 10,
+    'A': 11, 'J': 2, 'Q': 3, 'K': 4,
     '2': 2, '3': 3, '4': 4, '5': 5,
     '6': 6, '7': 7, '8': 8, '9': 9, '10': 10
 }
@@ -82,9 +82,9 @@ def analyser(data):
     if est_paire_as(cartes_j1) or est_paire_as(cartes_j2):
         lignes.append("🚫 *Anomalie — paire d'As détectée*")
         if est_paire_as(cartes_j1):
-            lignes.append(f"  J1 = A+A = 21 ({data['cartes_j1']})")
+            lignes.append(f"  J1 = A+A = 22 ({data['cartes_j1']})")
         if est_paire_as(cartes_j2):
-            lignes.append(f"  J2 = A+A = 21 ({data['cartes_j2']})")
+            lignes.append(f"  J2 = A+A = 22 ({data['cartes_j2']})")
         lignes.append("Partie ignorée — pas d'analyse.")
         return "\n".join(lignes)
 
