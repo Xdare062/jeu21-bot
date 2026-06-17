@@ -133,15 +133,25 @@ def analyser(data):
     at = diff + amper
     lignes.append(f"@ = {diff} + {amper} = *{at}*")
 
+    # NOUVELLE RÈGLE — Abandon si (Écart + sum_autres − J1) > &
+    resultat_regle = ecart + sum_autres - J1
+    lignes.append(
+        f"Vérif. abandon (règle 1) : Écart + sum_autres − J1 = {ecart} + {sum_autres} − {J1} = {resultat_regle} "
+        f"(comparé à & = {amper})"
+    )
+    if resultat_regle > amper:
+        lignes.append(f"🚫 *Condition d'abandon remplie ({resultat_regle} > {amper}) — partie abandonnée*")
+        return "\n".join(lignes)
+
     # RÈGLE B — Abandon si (Écart + &) + une carte de J2 = J1
     somme_b = ecart + amper
     cartes_en_cause = [c for c in cartes_j2 if somme_b + c == J1]
     if cartes_en_cause:
         lignes.append(
-            f"(Écart + &) = {ecart} + {amper} = {somme_b} ; "
+            f"Vérif. abandon (règle B) : (Écart + &) = {ecart} + {amper} = {somme_b} ; "
             f"+ carte({cartes_en_cause[0]}) = {somme_b + cartes_en_cause[0]} = J1"
         )
-        lignes.append("🚫 *Condition d'abandon remplie — partie abandonnée*")
+        lignes.append("🚫 *Condition d'abandon remplie (règle B) — partie abandonnée*")
         return "\n".join(lignes)
 
     # ÉTAPE 8 — Vérif @ ≤ Écart
