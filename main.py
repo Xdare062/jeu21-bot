@@ -183,51 +183,50 @@ def analyser(data):
 
 
 # ---------- Lecture auto du canal source + envoi du résultat via le bot ----------
+messages_traites = set()
 bot = Bot(token=BOT_TOKEN)
-client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
-
-
-@client.on(events.NewMessage(chats=SOURCE_CHANNEL_ENTITY))
+client = TelegramClient(StringSession(SESSION_STRI@client.on(events.NewMessage(chats=SOURCE_CHANNEL_ENTITY))
+@client.on(events.MessageEdited(chats=SOURCE_CHANNEL_ENTITY))
 async def on_new_message(event):
-    """Traite chaque message du canal source. Garantit TOUJOURS une réponse,
-    qu'il s'agisse d'un abandon, d'un échec de format, ou d'une erreur inattendue."""
     resultat = None
     markdown = False
 
     try:
-        texte = event.message.message or ""
+        await asyncio.sleep(2)
 
-        if not texte.strip():
-            resultat = "ℹ️ Message reçu sans texte (image, sticker, vidéo, etc.) — rien à analyser."
+        message = await event.get_message()
+        texte = message.message or ""
 
-        elif not re.search(r'#N\d+', texte):
-            resultat = (
-                "ℹ️ Message reçu, mais aucun numéro #N détecté — rien à analyser.\n\n"
-                f"Extrait reçu :\n{texte[:300]}"
-            )
+        pattern_complet = r'#N\d+\.\s*\d+\([^)]+\)\s*-\s*\d+\([^)]+\)\s*#T\d+'
 
-        else:
-            data = parse_message(texte)
-            if not data:
-                resultat = (
-                    "⚠️ Format non reconnu — un \"#N\" a été détecté mais le message ne correspond "
-                    "pas exactement au format attendu (#N.. XX(...) - YY(...) #T..).\n\n"
-                    f"Texte reçu :\n{texte[:300]}"
-                )
-            else:
-                resultat = analyser(data)
-                markdown = True
+        if not re.search(pattern_complet, texte):
+            return
+
+        data = parse_message(texte)
+
+        if not data:
+            return
+
+        identifiant = (data["N"], data["tour"])
+
+        if identifiant in messages_traites:
+            return
+
+        messages_traites.add(identifiant)
+
+        resultat = analyser(data)
+        markdown = True
 
     except Exception as e:
         resultat = f"🛑 Erreur interne pendant l'analyse : {e}"
         markdown = False
 
-    # Envoi, avec repli automatique en texte brut si le Markdown fait planter l'envoi
     try:
         if markdown:
             await bot.send_message(chat_id=CANAL_ID, text=resultat, parse_mode="Markdown")
         else:
             await bot.send_message(chat_id=CANAL_ID, text=resultat)
+
     except Exception as e:
         print(f"Erreur d'envoi (tentative 1) : {e}")
         try:
@@ -235,6 +234,9 @@ async def on_new_message(event):
             await bot.send_message(chat_id=CANAL_ID, text=secours)
         except Exception as e2:
             print(f"Erreur d'envoi (tentative de secours) : {e2}")
+
+
+e de secours) : {e2}")
 
 
 async def run_bot():
