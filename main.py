@@ -140,29 +140,33 @@ def analyser(data):
     delta = alpha - J1
     lignes.append(f"delta = alpha − J1 = {alpha} − {J1} = *{delta}*")
 
-    # ÉTAPE 9 — Vérifications (om = delta + plus petite carte de J2)
-    petite_carte_j2 = min(cartes_j2)
-    om = delta + petite_carte_j2
-    lignes.append(f"Plus petite carte J2 = {petite_carte_j2} → om = delta + petite_carte_j2 = {delta} + {petite_carte_j2} = *{om}*")
-
-    cond1 = om < J1
-    lignes.append(f"Condition 1 — om < J1 : {om} < {J1} {'✅' if cond1 else '❌'}")
-    if not cond1:
-        lignes.append("❌ *Échec de validation (condition 1 : om ≥ J1) — arrêt*")
-        return "\n".join(lignes)
-
     if not cartes_j1:
         lignes.append("⚠️ Cartes J1 non lisibles")
         return "\n".join(lignes)
 
+    # ÉTAPE 9 — Vérifications (om = delta + plus petite carte de J2)
+    petite_carte_j2 = min(cartes_j2)
     petite_carte_j1 = min(cartes_j1)
-    cond2 = (J1 - petite_carte_j1) < om
+    om = delta + petite_carte_j2
+    lignes.append(f"Plus petite carte J2 = {petite_carte_j2} → om = delta + petite_carte_j2 = {delta} + {petite_carte_j2} = *{om}*")
+
+    cond1 = om >= J1
+    lignes.append(f"Condition 1 — om ≥ J1 : {om} ≥ {J1} {'✅' if cond1 else '❌'}")
+    if cond1:
+        lignes.append("❌ *Échec de validation (condition 1 : om ≥ J1) — arrêt*")
+        return "\n".join(lignes)
+
+    cond_delta_j2 = petite_carte_j2 == delta
+    cond_delta_j1 = petite_carte_j1 == delta
     lignes.append(
-        f"Plus petite carte J1 = {petite_carte_j1} → Condition 2 — (J1 − petite_carte_j1) < om : "
-        f"{J1 - petite_carte_j1} < {om} {'✅' if cond2 else '❌'}"
+        f"Plus petite carte J1 = {petite_carte_j1} → Vérification : "
+        f"petite_carte_j2 ≠ delta ({petite_carte_j2} ≠ {delta}) "
+        f"{'✅' if not cond_delta_j2 else '❌'} | "
+        f"petite_carte_j1 ≠ delta ({petite_carte_j1} ≠ {delta}) "
+        f"{'✅' if not cond_delta_j1 else '❌'}"
     )
-    if not cond2:
-        lignes.append("❌ *Échec de validation (condition 2) — arrêt*")
+    if cond_delta_j2 or cond_delta_j1:
+        lignes.append("❌ *Échec de validation (petite carte = delta) — arrêt*")
         return "\n".join(lignes)
 
     # ÉTAPE 11 — Partie future
@@ -170,17 +174,19 @@ def analyser(data):
     lignes.append(f"N_future = N + delta = {N} + {delta} = *N{n_future}*")
 
     total = J1 + J2
+    comparateur = J1 - petite_carte_j1
 
-    # ÉTAPE 10 — Prédiction selon delta vs max_carte
+    # ÉTAPE 10 — Prédiction selon (J1 − petite_carte_j1) vs om
     lignes.append("─────────────────")
-    if delta < max_carte:
-        lignes.append(f"📡 *Signal : Total + 37,5 = {total} + 37,5 = {total + 37.5}*")
-        lignes.append(f"🎯 *À la partie N{n_future}*")
-    elif delta > max_carte:
+    lignes.append(f"(J1 − petite_carte_j1) = {J1} − {petite_carte_j1} = *{comparateur}*")
+    if comparateur < om:
         lignes.append(f"⚠️ *Burst prévu à la partie N{n_future}*")
         lignes.append("J1 ou J2 dépassera strictement 21")
+    elif comparateur > om:
+        lignes.append(f"📡 *Signal : Total + 37,5 = {total} + 37,5 = {total + 37.5}*")
+        lignes.append(f"🎯 *À la partie N{n_future}*")
     else:
-        lignes.append("➖ *Cas neutre (delta = max_carte) — aucune prédiction émise*")
+        lignes.append("➖ *Cas neutre ((J1 − petite_carte_j1) = om) — aucune prédiction émise*")
 
     return "\n".join(lignes)
 
