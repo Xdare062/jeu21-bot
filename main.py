@@ -1,32 +1,15 @@
 import re
 import os
-import asyncio
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from telegram import Update
+from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
 
-from telethon import TelegramClient, events
-from telethon.sessions import StringSession
-from telegram import Bot
-
-# ---------- Configuration ----------
-BOT_TOKEN = os.environ["BOT_TOKEN"]            # token du bot qui POSTE les résultats
-CANAL_ID = int(os.environ["CANAL_ID"])         # canal de destination (où le bot poste)
-
-API_ID = int(os.environ["API_ID"])             # depuis my.telegram.org
-API_HASH = os.environ["API_HASH"]              # depuis my.telegram.org
-SESSION_STRING = os.environ["SESSION_STRING"]  # généré une fois en local (generate_session.py)
-
-SOURCE_CHANNEL = os.environ["SOURCE_CHANNEL"]  # @username ou ID numérique du canal source
-
+TOKEN = os.environ.get("BOT_TOKEN", "8932137146:AAErqWryYEPzU7Nz3_Llxu3yv__x3vumvlI")
+CANAL_ID = int(os.environ.get("CANAL_ID", "-1003839030429"))
 PORT = int(os.environ.get("PORT", "10000"))
 
-try:
-    SOURCE_CHANNEL_ENTITY = int(SOURCE_CHANNEL)
-except ValueError:
-    SOURCE_CHANNEL_ENTITY = SOURCE_CHANNEL
 
-
-# ---------- Petit serveur HTTP pour Render ----------
 class PingHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -34,7 +17,7 @@ class PingHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"Jeu21 bot is running")
 
     def log_message(self, format, *args):
-        pass
+        pass  # silence les logs HTTP
 
 
 def start_web_server():
@@ -42,16 +25,21 @@ def start_web_server():
     server.serve_forever()
 
 
-# ---------- Algorithme (strictement identique à la version précédente) ----------
 VALEURS_CARTES = {
     'A': 11, 'J': 2, 'Q': 3, 'K': 4,
     '2': 2, '3': 3, '4': 4, '5': 5,
     '6': 6, '7': 7, '8': 8, '9': 9, '10': 10
 }
 
+# Format strict et complet attendu : #N15. 19(K♣️J♥️8♥️Q♥️J♠️) - 27(A♣️7♦️9♠️) #T46
+FORMAT_COMPLET = re.compile(
+    r'#N\d+\.\s*\d+\([^)]+\)\s*-\s*\d+\([^)]+\)\s*#T\d+'
+)
+
 
 def parse_cartes(texte):
-    texte = texte.replace('10', 'X')
+    """Extrait les valeurs numériques des cartes depuis une chaîne comme K♣️J♥️8♥️"""
+    texte = texte.replace('10', 'X')  # protège '10' avant de splitter
     symboles = re.sub(r'[♠♦♥♣️🂠\s]', '', texte)
     cartes = []
     i = 0
@@ -66,6 +54,7 @@ def parse_cartes(texte):
 
 
 def parse_message(texte):
+    """Parse le format : #N15. 19(K♣️J♥️8♥️Q♥️J♠️) - 27(A♣️7♦️9♠️) #T46"""
     pattern = r'#N(\d+)\.\s*(\d+)\(([^)]+)\)\s*-\s*(\d+)\(([^)]+)\)\s*#T(\d+)'
     m = re.search(pattern, texte)
     if not m:
@@ -81,6 +70,7 @@ def parse_message(texte):
 
 
 def analyser(data):
+    """Nouvel algorithme d'analyse (remplace entièrement l'ancien)."""
     N = data['N']
     J1 = data['J1']
     J2 = data['J2']
@@ -93,6 +83,7 @@ def analyser(data):
     lignes.append(f"J1 = {J1} | J2 = {J2}")
     lignes.append("─────────────────")
 
+    # RÈGLE F — Abandon si J1 ou J2 a 5 cartes
     if len(cartes_j1) == 5 or len(cartes_j2) == 5:
         lignes.append("🚫 *Abandon — règle F : 5 cartes détectées*")
         if len(cartes_j1) == 5:
@@ -101,8 +92,10 @@ def analyser(data):
             lignes.append(f"  J2 a 5 cartes ({data['cartes_j2']})")
         return "\n".join(lignes)
 
+    # ÉTAPE 1 — Éligibilité
     elig_j1 = J1 < 20
     elig_j2 = 21 < J2 < 30
+
     if not elig_j1 or not elig_j2:
         lignes.append("❌ *Non éligible*")
         if not elig_j1:
@@ -117,29 +110,37 @@ def analyser(data):
         lignes.append("⚠️ Cartes J2 non lisibles")
         return "\n".join(lignes)
 
+    # ÉTAPE 2 — &
     amper = 20 - J1
     lignes.append(f"& = 20 − {J1} = *{amper}*")
 
+    # ÉTAPE 3 — Plus grande carte de J2
     max_carte = max(cartes_j2)
     lignes.append(f"Cartes J2 : {cartes_j2} → max = {max_carte}")
 
+    # ÉTAPE 4 — J2_an (somme des cartes de J2 sauf sa plus grande, un seul exemplaire retiré)
     j2_an = sum(cartes_j2) - max_carte
     lignes.append(f"J2_an = somme(J2) − max = {sum(cartes_j2)} − {max_carte} = *{j2_an}*")
 
+    # ÉTAPE 5 — Écart
     ecart = J2 - J1
     lignes.append(f"Écart = {J2} − {J1} = *{ecart}*")
 
+    # ÉTAPE 6 — alpha
     alpha = J1 - ecart + j2_an + amper
     lignes.append(f"alpha = J1 − Écart + J2_an + & = {J1} − {ecart} + {j2_an} + {amper} = *{alpha}*")
 
+    # ÉTAPE 7 — Vérification alpha > J1
     lignes.append(f"alpha > J1 : {alpha} > {J1} {'✅' if alpha > J1 else '❌'}")
     if not (alpha > J1):
         lignes.append("❌ *Échec de validation (alpha ≤ J1) — arrêt*")
         return "\n".join(lignes)
 
+    # ÉTAPE 8 — delta
     delta = alpha - J1
     lignes.append(f"delta = alpha − J1 = {alpha} − {J1} = *{delta}*")
 
+    # ÉTAPE 9 — Vérifications (om = delta + plus petite carte de J2)
     petite_carte_j2 = min(cartes_j2)
     om = delta + petite_carte_j2
     lignes.append(f"Plus petite carte J2 = {petite_carte_j2} → om = delta + petite_carte_j2 = {delta} + {petite_carte_j2} = *{om}*")
@@ -164,11 +165,13 @@ def analyser(data):
         lignes.append("❌ *Échec de validation (condition 2) — arrêt*")
         return "\n".join(lignes)
 
+    # ÉTAPE 11 — Partie future
     n_future = N + delta
     lignes.append(f"N_future = N + delta = {N} + {delta} = *N{n_future}*")
 
     total = J1 + J2
 
+    # ÉTAPE 10 — Prédiction selon delta vs max_carte
     lignes.append("─────────────────")
     if delta < max_carte:
         lignes.append(f"📡 *Signal : Total + 37,5 = {total} + 37,5 = {total + 37.5}*")
@@ -182,72 +185,45 @@ def analyser(data):
     return "\n".join(lignes)
 
 
-# ---------- Lecture auto du canal source + envoi du résultat via le bot ----------
-messages_traites = set()
-bot = Bot(token=BOT_TOKEN)
-client = TelegramClient(StringSession(SESSION_STRI@client.on(events.NewMessage(chats=SOURCE_CHANNEL_ENTITY))
-@client.on(events.MessageEdited(chats=SOURCE_CHANNEL_ENTITY))
-async def on_new_message(event):
-    resultat = None
-    markdown = False
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message or update.channel_post
+    if not msg:
+        return
 
-    try:
-        await asyncio.sleep(2)
+    texte = msg.text or msg.caption or ""
+    if not texte:
+        return
 
-        message = await event.get_message()
-        texte = message.message or ""
+    # Condition stricte : le message doit contenir le format COMPLET
+    # #Nxxxx. xx(...) - yy(...) #Txx avant toute tentative d'analyse.
+    # findall() (et non un simple "#N123" isolé) évite les faux
+    # déclenchements sur des messages partiels ou mal formés.
+    if not FORMAT_COMPLET.search(texte):
+        return
 
-        pattern_complet = r'#N\d+\.\s*\d+\([^)]+\)\s*-\s*\d+\([^)]+\)\s*#T\d+'
+    # Une seule analyse envoyée par message, même si le format complet
+    # apparaît plusieurs fois dans le même texte : on ne traite que la
+    # première occurrence trouvée par parse_message.
+    data = parse_message(texte)
+    if not data:
+        return
 
-        if not re.search(pattern_complet, texte):
-            return
+    resultat = analyser(data)
 
-        data = parse_message(texte)
-
-        if not data:
-            return
-
-        identifiant = (data["N"], data["tour"])
-
-        if identifiant in messages_traites:
-            return
-
-        messages_traites.add(identifiant)
-
-        resultat = analyser(data)
-        markdown = True
-
-    except Exception as e:
-        resultat = f"🛑 Erreur interne pendant l'analyse : {e}"
-        markdown = False
-
-    try:
-        if markdown:
-            await bot.send_message(chat_id=CANAL_ID, text=resultat, parse_mode="Markdown")
-        else:
-            await bot.send_message(chat_id=CANAL_ID, text=resultat)
-
-    except Exception as e:
-        print(f"Erreur d'envoi (tentative 1) : {e}")
-        try:
-            secours = re.sub(r'[*_`\[\]]', '', str(resultat))
-            await bot.send_message(chat_id=CANAL_ID, text=secours)
-        except Exception as e2:
-            print(f"Erreur d'envoi (tentative de secours) : {e2}")
-
-
-e de secours) : {e2}")
-
-
-async def run_bot():
-    await client.start()
-    print("✅ Connecté au canal source, écoute automatique en cours...")
-    await client.run_until_disconnected()
+    await context.bot.send_message(
+        chat_id=CANAL_ID,
+        text=resultat,
+        parse_mode="Markdown"
+    )
 
 
 def main():
     threading.Thread(target=start_web_server, daemon=True).start()
-    asyncio.run(run_bot())
+
+    app = ApplicationBuilder().token(TOKEN).build()
+    app.add_handler(MessageHandler(filters.ALL, handle_message))
+    print("✅ Bot Jeu21 démarré...")
+    app.run_polling()
 
 
 if __name__ == "__main__":
