@@ -189,6 +189,8 @@ client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
 
 @client.on(events.NewMessage(chats=SOURCE_CHANNEL_ENTITY))
 async def on_new_message(event):
+    print("MESSAGE RECU")
+print(event.message.message)
     """Traite chaque message du canal source. Garantit TOUJOURS une réponse,
     qu'il s'agisse d'un abandon, d'un échec de format, ou d'une erreur inattendue."""
     resultat = None
