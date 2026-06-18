@@ -189,20 +189,52 @@ client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
 
 @client.on(events.NewMessage(chats=SOURCE_CHANNEL_ENTITY))
 async def on_new_message(event):
-    texte = event.message.message or ""
-    if not texte or not re.search(r'#N\d+', texte):
-        return
-
-    data = parse_message(texte)
-    if not data:
-        return
-
-    resultat = analyser(data)
+    """Traite chaque message du canal source. Garantit TOUJOURS une réponse,
+    qu'il s'agisse d'un abandon, d'un échec de format, ou d'une erreur inattendue."""
+    resultat = None
+    markdown = False
 
     try:
-        await bot.send_message(chat_id=CANAL_ID, text=resultat, parse_mode="Markdown")
+        texte = event.message.message or ""
+
+        if not texte.strip():
+            resultat = "ℹ️ Message reçu sans texte (image, sticker, vidéo, etc.) — rien à analyser."
+
+        elif not re.search(r'#N\d+', texte):
+            resultat = (
+                "ℹ️ Message reçu, mais aucun numéro #N détecté — rien à analyser.\n\n"
+                f"Extrait reçu :\n{texte[:300]}"
+            )
+
+        else:
+            data = parse_message(texte)
+            if not data:
+                resultat = (
+                    "⚠️ Format non reconnu — un \"#N\" a été détecté mais le message ne correspond "
+                    "pas exactement au format attendu (#N.. XX(...) - YY(...) #T..).\n\n"
+                    f"Texte reçu :\n{texte[:300]}"
+                )
+            else:
+                resultat = analyser(data)
+                markdown = True
+
     except Exception as e:
-        print(f"Erreur d'envoi: {e}")
+        resultat = f"🛑 Erreur interne pendant l'analyse : {e}"
+        markdown = False
+
+    # Envoi, avec repli automatique en texte brut si le Markdown fait planter l'envoi
+    try:
+        if markdown:
+            await bot.send_message(chat_id=CANAL_ID, text=resultat, parse_mode="Markdown")
+        else:
+            await bot.send_message(chat_id=CANAL_ID, text=resultat)
+    except Exception as e:
+        print(f"Erreur d'envoi (tentative 1) : {e}")
+        try:
+            secours = re.sub(r'[*_`\[\]]', '', str(resultat))
+            await bot.send_message(chat_id=CANAL_ID, text=secours)
+        except Exception as e2:
+            print(f"Erreur d'envoi (tentative de secours) : {e2}")
 
 
 async def run_bot():
