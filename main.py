@@ -79,13 +79,13 @@ def analyser(data):
     cartes_j2 = parse_cartes(data['cartes_j2'])
 
     lignes = []
-    lignes.append(f"📊 *Analyse #N{N} — T{tour}*")
+    lignes.append(f"📊 Analyse #N{N} — T{tour}")
     lignes.append(f"J1 = {J1} | J2 = {J2}")
     lignes.append("─────────────────")
 
     # RÈGLE F — Abandon si J1 ou J2 a 5 cartes
     if len(cartes_j1) == 5 or len(cartes_j2) == 5:
-        lignes.append("🚫 *Abandon — règle F : 5 cartes détectées*")
+        lignes.append("🚫 Abandon — règle F : 5 cartes détectées")
         if len(cartes_j1) == 5:
             lignes.append(f"  J1 a 5 cartes ({data['cartes_j1']})")
         if len(cartes_j2) == 5:
@@ -97,7 +97,7 @@ def analyser(data):
     elig_j2 = 21 < J2 < 30
 
     if not elig_j1 or not elig_j2:
-        lignes.append("❌ *Non éligible*")
+        lignes.append("❌ Non éligible")
         if not elig_j1:
             lignes.append(f"  J1 < 20 : ✗ (J1 = {J1})")
         if not elig_j2:
@@ -112,7 +112,7 @@ def analyser(data):
 
     # ÉTAPE 2 — &
     amper = 20 - J1
-    lignes.append(f"& = 20 − {J1} = *{amper}*")
+    lignes.append(f"& = 20 − {J1} = {amper}")
 
     # ÉTAPE 3 — Plus grande carte de J2
     max_carte = max(cartes_j2)
@@ -120,25 +120,25 @@ def analyser(data):
 
     # ÉTAPE 4 — J2_an (somme des cartes de J2 sauf sa plus grande, un seul exemplaire retiré)
     j2_an = sum(cartes_j2) - max_carte
-    lignes.append(f"J2_an = somme(J2) − max = {sum(cartes_j2)} − {max_carte} = *{j2_an}*")
+    lignes.append(f"J2_an = somme(J2) − max = {sum(cartes_j2)} − {max_carte} = {j2_an}")
 
     # ÉTAPE 5 — Écart
     ecart = J2 - J1
-    lignes.append(f"Écart = {J2} − {J1} = *{ecart}*")
+    lignes.append(f"Écart = {J2} − {J1} = {ecart}")
 
     # ÉTAPE 6 — alpha
     alpha = J1 - ecart + j2_an + amper
-    lignes.append(f"alpha = J1 − Écart + J2_an + & = {J1} − {ecart} + {j2_an} + {amper} = *{alpha}*")
+    lignes.append(f"alpha = J1 − Écart + J2_an + & = {J1} − {ecart} + {j2_an} + {amper} = {alpha}")
 
     # ÉTAPE 7 — Vérification alpha > J1
     lignes.append(f"alpha > J1 : {alpha} > {J1} {'✅' if alpha > J1 else '❌'}")
     if not (alpha > J1):
-        lignes.append("❌ *Échec de validation (alpha ≤ J1) — arrêt*")
+        lignes.append("❌ Échec de validation (alpha ≤ J1) — arrêt")
         return "\n".join(lignes)
 
     # ÉTAPE 8 — delta
     delta = alpha - J1
-    lignes.append(f"delta = alpha − J1 = {alpha} − {J1} = *{delta}*")
+    lignes.append(f"delta = alpha − J1 = {alpha} − {J1} = {delta}")
 
     if not cartes_j1:
         lignes.append("⚠️ Cartes J1 non lisibles")
@@ -148,12 +148,12 @@ def analyser(data):
     petite_carte_j2 = min(cartes_j2)
     petite_carte_j1 = min(cartes_j1)
     om = delta + petite_carte_j2
-    lignes.append(f"Plus petite carte J2 = {petite_carte_j2} → om = delta + petite_carte_j2 = {delta} + {petite_carte_j2} = *{om}*")
+    lignes.append(f"Plus petite carte J2 = {petite_carte_j2} → om = delta + petite_carte_j2 = {delta} + {petite_carte_j2} = {om}")
 
     cond1 = om >= J1
     lignes.append(f"Condition 1 — om ≥ J1 : {om} ≥ {J1} {'✅' if cond1 else '❌'}")
     if cond1:
-        lignes.append("❌ *Échec de validation (condition 1 : om ≥ J1) — arrêt*")
+        lignes.append("❌ Échec de validation (condition 1 : om ≥ J1) — arrêt")
         return "\n".join(lignes)
 
     cond_delta_j2 = petite_carte_j2 == delta
@@ -166,27 +166,27 @@ def analyser(data):
         f"{'✅' if not cond_delta_j1 else '❌'}"
     )
     if cond_delta_j2 or cond_delta_j1:
-        lignes.append("❌ *Échec de validation (petite carte = delta) — arrêt*")
+        lignes.append("❌ Échec de validation (petite carte = delta) — arrêt")
         return "\n".join(lignes)
 
     # ÉTAPE 11 — Partie future
     n_future = N + delta
-    lignes.append(f"N_future = N + delta = {N} + {delta} = *N{n_future}*")
+    lignes.append(f"N_future = N + delta = {N} + {delta} = N{n_future}")
 
     total = J1 + J2
     comparateur = J1 - petite_carte_j1
 
     # ÉTAPE 10 — Prédiction selon (J1 − petite_carte_j1) vs om
     lignes.append("─────────────────")
-    lignes.append(f"(J1 − petite_carte_j1) = {J1} − {petite_carte_j1} = *{comparateur}*")
+    lignes.append(f"(J1 − petite_carte_j1) = {J1} − {petite_carte_j1} = {comparateur}")
     if comparateur < om:
-        lignes.append(f"⚠️ *Burst prévu à la partie N{n_future}*")
+        lignes.append(f"⚠️ Burst prévu à la partie N{n_future}")
         lignes.append("J1 ou J2 dépassera strictement 21")
     elif comparateur > om:
-        lignes.append(f"📡 *Signal : Total + 37,5 = {total} + 37,5 = {total + 37.5}*")
-        lignes.append(f"🎯 *À la partie N{n_future}*")
+        lignes.append(f"📡 Signal : Total + 37,5 = {total} + 37,5 = {total + 37.5}")
+        lignes.append(f"🎯 À la partie N{n_future}")
     else:
-        lignes.append("➖ *Cas neutre ((J1 − petite_carte_j1) = om) — aucune prédiction émise*")
+        lignes.append("➖ Cas neutre ((J1 − petite_carte_j1) = om) — aucune prédiction émise")
 
     return "\n".join(lignes)
 
@@ -218,8 +218,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await context.bot.send_message(
         chat_id=CANAL_ID,
-        text=resultat,
-        parse_mode="Markdown"
+        text=resultat
     )
 
 
