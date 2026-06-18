@@ -24,6 +24,27 @@ def start_web_server():
     server = HTTPServer(("0.0.0.0", PORT), PingHandler)
     server.serve_forever()
 
+# Historique en mémoire des parties récentes (perdu au redémarrage du bot).
+# Chaque entrée : {'N': int, 'tour': str, 'tags': set, 'eligible': bool}
+HISTORIQUE = []
+TAGS_RESULTAT = {'#O', '#R', '#X', '#G'}
+
+def extraire_tags(texte):
+    """Extrait les hashtags de résultat (hors #N et #T) présents dans le message."""
+    tous_tags = re.findall(r'#\w+', texte)
+    return {t for t in tous_tags if not re.match(r'^#N\d+$', t) and not re.match(r'^#T\d+$', t)}
+
+def enregistrer_historique(data, texte, eligible):
+    """Ajoute la partie courante à l'historique en mémoire, en gardant une fenêtre raisonnable."""
+    HISTORIQUE.append({
+        'N': data['N'],
+        'tour': data['tour'],
+        'tags': extraire_tags(texte),
+        'eligible': eligible,
+    })
+    # On garde large (50) pour couvrir la fenêtre de 4 nécessaire à la Règle C avec marge
+    del HISTORIQUE[:-50]
+
 VALEURS_CARTES = {
     'A': 11, 'J': 2, 'Q': 3, 'K': 4,
     '2': 2, '3': 3, '4': 4, '5': 5,
@@ -102,6 +123,43 @@ def analyser(data):
 
     lignes.append("✅ Éligible")
 
+    # RÈGLE C — Fenêtre post-#R (4 parties précédentes, même jour, dans l'historique en mémoire)
+    fenetre = [h for h in HISTORIQUE if N - 4 <= h['N'] < N]
+    for h in fenetre:
+        if '#R' in h['tags']:
+            nb_tags = len(h['tags'])
+            if not (N > h['N'] + nb_tags):
+                lignes.append(
+                    f"🚫 *Règle C — Abandon : partie #N{h['N']} taguée #R "
+                    f"({nb_tags} tag(s)) — N doit être > {h['N'] + nb_tags}*"
+                )
+                return "\n".join(lignes)
+
+    # RÈGLE C2 — Fenêtre post-#X+#O exact (mêmes 4 parties précédentes)
+    for h in fenetre:
+        if h['tags'] == {'#X', '#O'}:
+            nb_tags = len(h['tags'])
+            if not (N > h['N'] + nb_tags):
+                lignes.append(
+                    f"🚫 *Règle C2 — Abandon : partie #N{h['N']} taguée exactement #X+#O "
+                    f"({nb_tags} tag(s)) — N doit être > {h['N'] + nb_tags}*"
+                )
+                return "\n".join(lignes)
+
+    # RÈGLE D — Tour rapproché avec la partie précédente éligible
+    precedente = next((h for h in reversed(HISTORIQUE) if h['N'] == N - 1), None)
+    if precedente is not None and precedente['eligible']:
+        try:
+            ecart_tour = abs(int(tour) - int(precedente['tour']))
+        except ValueError:
+            ecart_tour = None
+        if ecart_tour is not None and ecart_tour in (0, 1):
+            lignes.append(
+                f"🚫 *Règle D — Abandon : écart de tour avec #N{N-1} = {ecart_tour} "
+                f"(T{tour} vs T{precedente['tour']}), et #N{N-1} était éligible*"
+            )
+            return "\n".join(lignes)
+
     # ÉTAPE 2 — &
     amper = 20 - J1
     lignes.append(f"& = 20 − {J1} = *{amper}*")
@@ -154,6 +212,16 @@ def analyser(data):
         lignes.append("🚫 *Condition d'abandon remplie (règle B) — partie abandonnée*")
         return "\n".join(lignes)
 
+    # RÈGLE B3 — Abandon si Écart + & + sum_autres = J1
+    somme_b3 = ecart + amper + sum_autres
+    lignes.append(
+        f"Vérif. abandon (règle B3) : Écart + & + sum_autres = {ecart} + {amper} + {sum_autres} = {somme_b3} "
+        f"(comparé à J1 = {J1})"
+    )
+    if somme_b3 == J1:
+        lignes.append("🚫 *Condition d'abandon remplie (règle B3) — partie abandonnée*")
+        return "\n".join(lignes)
+
     # ÉTAPE 8 — Vérif @ ≤ Écart
     check_at = at <= ecart
     lignes.append(f"@ ≤ Écart : {at} ≤ {ecart} {'✅' if check_at else '❌'}")
@@ -198,6 +266,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     resultat = analyser(data)
+
+    # Mettre à jour l'historique en mémoire (utilisé par les Règles C et D)
+    # Éligible = étape 1 (J1<20 et 21<J2<30) ET pas une paire d'As (Règle A)
+    cj1 = parse_cartes(data['cartes_j1'])
+    cj2 = parse_cartes(data['cartes_j2'])
+    elig = (data['J1'] < 20) and (21 < data['J2'] < 30) and not (est_paire_as(cj1) or est_paire_as(cj2))
+    enregistrer_historique(data, texte, elig)
 
     await context.bot.send_message(
         chat_id=CANAL_ID,
